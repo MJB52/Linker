@@ -10,62 +10,122 @@ namespace Linker
         string LoadAddr = "02750";
         ReadObjectFiles oread = new ReadObjectFiles();
         List<string> Files = new List<string>(Environment.GetCommandLineArgs());
-        List<string> OCode = new List<string>();
+        public List<string> OCode = new List<string>();
         ExternSymTable SymTable = new ExternSymTable();
         public void HandleEachFile()
         {
             foreach (var thing in Files)
-                if(thing.ToUpper().EndsWith(".O"))
-                    Strategy(thing);
-        }
-        public void Strategy(string FileName)
-        {
-            List<string> ObjCode = new List<string>();
-            var data = oread.GetData(FileName);
-            var length = HandleFirstLine(data.First());
-            var csectName = GetCSectName(data.First());
-            var byteTable = new string[Convert.ToInt32(length)];
-            data.Remove(data.First());
-            var exxaddr = HandleLastLine(data.Last());
-            data.Remove(data.Last());
-            HandleDRecs(data, csectName, length, LoadAddr);
-            foreach (var line in data)
-            {
-                byteTable = HandleOtherLines(byteTable, line);
-            }
-            byteTable = FillInData(byteTable);
-            OCode.AddRange(byteTable);
+                if (thing.ToUpper().EndsWith(".O"))
+                    Pass1Strategy(thing);
+            int previousProgLength = 0;
+            foreach (var thing in Files)
+                if (thing.ToUpper().EndsWith(".O"))
+                    previousProgLength = Pass2Strategy(thing, previousProgLength);
+            SymTable.Print();
         }
 
-        private string GetCSectName(string line)
+        private int Pass2Strategy(string FileName, int previousProgLength)
         {
+            var data = oread.GetData(FileName);
+            var length = int.Parse(HandleFirstLine(data.First()), System.Globalization.NumberStyles.HexNumber);
+            var csectName = GetCSectName(data.First());
+            foreach (var line in data)
+            {
+                if (line.ToUpper().StartsWith('M'))
+                    HandleMRecs(line, previousProgLength);
+            }
+            return length;
+        }
+
+        private void HandleMRecs(string line, int length)
+        {
+            var addr = int.Parse(GetStartAddr(line), System.Globalization.NumberStyles.HexNumber);
+            var symbol = GetSymbolName(line);
+            var foundNode = SymTable.GetNode(symbol);
+            string updateVal = string.Empty;
+            if (!string.IsNullOrWhiteSpace(foundNode.CSect))
+                updateVal = foundNode.CsAddr;
+            else
+                updateVal = foundNode.LAddr;
+            int j = 0;
+            if(updateVal.Length == 5)
+                for (int i = (addr * 2) + 1 + length; i < (addr * 2) + length + 1 + updateVal.Length; i++)
+                {
+                    OCode[i] = updateVal[j].ToString();
+                    j++;
+                }
+            else
+                for (int i = (addr * 2) + length; i < (addr * 2) + length + updateVal.Length; i++)
+                {
+                    OCode[i] = updateVal[j].ToString();
+                    j++;
+                }
+        }
+
+        private string GetSymbolName(string line)
+        {
+            int index;
             string name = string.Empty;
-            for(int i = 1; i < 6; i++)
-                name += line[i].ToString();
+            if (line.Contains('+'))
+                index = line.LastIndexOf('+');
+            else
+                index = line.LastIndexOf('-');
+            for (int i = index + 1; i < line.Length; i++)
+                name += line[i];
             return name;
         }
 
-        private void HandleDRecs(List<string> data,string name, string length, string csAddr)
+        private void Pass1Strategy(string FileName)
         {
-            foreach(string line in data)
-            {
-                if (line.ToUpper().StartsWith('D'))
-                    BreakUpDRec(line, name, length, csAddr);
-            }
-        }
-
-        private void BreakUpDRec(string line,string name, string proglength, string csAddr)
-        {
+            var data = oread.GetData(FileName);
+            var length = int.Parse(HandleFirstLine(data.First()), System.Globalization.NumberStyles.HexNumber); 
+            var csectName = GetCSectName(data.First());
+            var byteTable = new string[length * 2];
             SymTable.Insert(new Node
             {
-                CSect = name,
-                Length = proglength,
-                CsAddr = csAddr,
+                CSect = csectName,
+                Length = length.ToString("X").PadLeft(6, '0'),
+                CsAddr = LoadAddr.PadLeft(5, '0'),
                 Addr = string.Empty,
                 LAddr = string.Empty,
                 Symbol = string.Empty
             });
-            line = line.Replace("D", "");
+            data.Remove(data.First());
+            var exxaddr = HandleLastLine(data.Last());
+            data.Remove(data.Last());
+            HandleDRecs(ref data, LoadAddr);
+            foreach (var line in data)
+            {
+                if(!line.ToUpper().StartsWith('R') && !line.ToUpper().StartsWith('M'))
+                    byteTable = HandleOtherLines(byteTable, line);
+            }
+            byteTable = FillInData(byteTable);
+            data = oread.GetData(FileName);
+            OCode.AddRange(byteTable);
+            LoadAddr = LoadAddr.IncrementInHex(length.ToString("X"));
+        }
+        private string GetCSectName(string line)
+        {
+            string name = string.Empty;
+            for(int i = 1; i < 5; i++)
+                name += line[i].ToString();
+            return name;
+        }
+
+        private void HandleDRecs(ref List<string> data, string csAddr)
+        {
+            foreach(string line in data)
+            {
+                string temp = line;
+                if (line.ToUpper().StartsWith('D'))
+                    BreakUpDRec(line, csAddr);
+            }
+            data.RemoveAll(c => c.ToUpper().StartsWith('D'));
+        }
+
+        private void BreakUpDRec(string line, string csAddr)
+        {
+            line = line.Substring(1);
             string symbol = string.Empty, addr = string.Empty;
             int totalLength = line.Length;
             int count = 0;
@@ -82,19 +142,20 @@ namespace Linker
                     CSect = string.Empty,
                     Length = string.Empty,
                     CsAddr = string.Empty,
-                    Addr = addr,
-                    LAddr = csAddr.IncrementInHex(addr),
+                    Addr = addr.PadLeft(5, '0'),
+                    LAddr = csAddr.IncrementInHex(addr).PadLeft(5, '0'),
                     Symbol = symbol
                 });
                 if (line.Length > 10)
                     line = line.Substring(10);
                 count += 10;
+
             }
         }
         private string HandleLastLine(string line)
         {
             string length = string.Empty;
-            for (int i = 1; i < 8; i++)
+            for (int i = 1; i < line.Length; i++)
                 length += line[i];
             return length;
         }
@@ -103,7 +164,7 @@ namespace Linker
         {
             for (int i = 0; i < byteTable.Length; i++)
                 if (string.IsNullOrWhiteSpace(byteTable[i]))
-                    byteTable[i] = "X";
+                    byteTable[i] = "U";
             return byteTable;
         }
 
@@ -118,11 +179,14 @@ namespace Linker
         {
             int lineLength;
             int startAddr;
-            startAddr = Convert.ToInt32(GetStartAddr(thing)) * 2;
-            lineLength = Convert.ToInt32(GetLineLength(thing)) * 2;
-            for (int i = startAddr; i < lineLength; i++)
-                for (int j = 9; j < thing.Length; j++)
-                    byteTable[i] = thing[j].ToString();                
+            startAddr = int.Parse(GetStartAddr(thing), System.Globalization.NumberStyles.HexNumber) * 2;
+            lineLength = int.Parse(GetLineLength(thing), System.Globalization.NumberStyles.HexNumber) * 2;
+            int i = startAddr;
+            for (int j = 9; j < thing.Length; j++)
+            {
+                byteTable[i] = thing[j].ToString();
+                i++;
+            }
             return byteTable;
         }
 
