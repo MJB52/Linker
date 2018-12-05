@@ -1,8 +1,7 @@
 {
   "profiles": {
     "Linker": {
-      "commandName": "Project",
-      "commandLineArgs": "prog2-1.o prog2-2.o"
+      "commandName": "Project"
     }
   }
 }
