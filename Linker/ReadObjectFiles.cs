@@ -8,6 +8,7 @@ namespace Linker
 {
     public class ReadObjectFiles
     {
+        //reads data from a specific file
         public List<string> GetData(string fName)
         {
             fName = SetFileName(fName);
@@ -23,6 +24,7 @@ namespace Linker
             }
             return Data;
         }
+        //map to project folder not solution
         private string SetFileName(string file) //add filepath
         {
             return "../../../" + file;

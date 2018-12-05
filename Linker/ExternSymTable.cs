@@ -23,13 +23,14 @@ namespace Linker
         }
         public Node GetNode(string symbol)
         {
-            return Table.FirstOrDefault(c => c.Symbol.Trim() == symbol || c.CSect.Trim() == symbol);
+            return Table.FirstOrDefault(c => c.Symbol.Trim() == symbol.Trim() || c.CSect.Trim() == symbol.Trim());
         }
         public List<Node> GetNodes()
         {
             return Table;
         }
     }
+    //holds all of the data
     class Node
     {
         public override string ToString()

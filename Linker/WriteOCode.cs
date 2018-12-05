@@ -15,6 +15,7 @@ namespace Linker
             code = ocode;
             FormatCode();
         }
+        //formats the object code so that this code does not need to be duplicated for filewritetoscreen and filewritetofile
         private void FormatCode()
         {
             int startAddr = 02750;
@@ -48,12 +49,15 @@ namespace Linker
                     line = string.Empty;
                 }
             }
+            FormattedCode.Add(line);
         }
+        //dumps output to screen
         public void WriteToScreen()
         {
             foreach (var thing in FormattedCode)
                 Console.WriteLine(thing);
         }
+        //dumps output to file
         public void WriteToFile()
         {
             File.WriteAllLines(FileName, FormattedCode);
